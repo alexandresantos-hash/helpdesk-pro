@@ -225,7 +225,18 @@ tr:hover td{background:#f9fafb}
 <script>
 let TK=localStorage.getItem('hd_token'),USR=JSON.parse(localStorage.getItem('hd_user')||'null'),EID=null,AGTS=[],CATS=[],TKTS=[];
 const H=()=>({'Content-Type':'application/json','Authorization':'Bearer '+TK});
-async function api(m,p,b){try{const r=await fetch(p,{method:m,headers:H(),body:b?JSON.stringify(b):undefined});if(r.status===401){doLogout();return null;}return r.json();}catch(e){console.error(e);return null;}}
+async function api(m,p,b){
+  try{
+    const r=await fetch(p,{method:m,headers:H(),body:b?JSON.stringify(b):undefined});
+    if(r.status===401){doLogout();return null;}
+    const data=await r.json();
+    if(!r.ok) throw new Error(data.error||'Erro '+r.status);
+    return data;
+  }catch(e){
+    console.error('API error:',m,p,e.message);
+    throw e;
+  }
+}
 async function doLogin(){
   const e=document.getElementById('lemail').value,p=document.getElementById('lpass').value,er=document.getElementById('lerr');
   er.style.display='none';
@@ -300,16 +311,55 @@ async function openModal(id){
   }
   document.getElementById('ov').classList.add('open');
 }
-function closeModal(){document.getElementById('ov').classList.remove('open');EID=null;}
+function closeModal(){document.getElementById('ov').classList.remove('open');EID=null;clearModalErr();}
 function cbg(e){if(e.target===document.getElementById('ov'))closeModal();}
 async function saveTicket(){
   const s=document.getElementById('msubj').value.trim(),r=document.getElementById('mreq').value.trim();
-  if(!s||!r){alert('Assunto e solicitante sao obrigatorios.');return;}
-  const b={subject:s,requester_name:r,requester_email:document.getElementById('memail').value,priority:document.getElementById('mprio').value,status:document.getElementById('mst').value,description:document.getElementById('mdesc').value,category_id:document.getElementById('mcat').value||null,agent_id:document.getElementById('mag').value||null};
-  if(EID){const com=document.getElementById('mcom')?.value?.trim();if(com)b.comment=com;await api('PATCH',`/api/v1/tickets/${EID}`,b);}
-  else await api('POST','/api/v1/tickets',b);
-  closeModal();await loadTickets();
+  if(!s||!r){showModalErr('Assunto e solicitante sao obrigatorios.');return;}
+  const saveBtn=document.getElementById('msl');
+  const origLabel=saveBtn.textContent;
+  saveBtn.textContent='Salvando...';
+  saveBtn.parentElement.disabled=true;
+  const catVal=document.getElementById('mcat').value;
+  const agVal=document.getElementById('mag').value;
+  const b={
+    subject:s,requester_name:r,
+    requester_email:document.getElementById('memail').value,
+    priority:document.getElementById('mprio').value,
+    status:document.getElementById('mst').value,
+    description:document.getElementById('mdesc').value,
+    category_id:(catVal&&catVal!=='')?parseInt(catVal):null,
+    agent_id:(agVal&&agVal!=='')?parseInt(agVal):null
+  };
+  try{
+    if(EID){
+      const com=document.getElementById('mcom')?.value?.trim();
+      if(com)b.comment=com;
+      await api('PATCH',`/api/v1/tickets/${EID}`,b);
+    }else{
+      await api('POST','/api/v1/tickets',b);
+    }
+    clearModalErr();
+    closeModal();
+    await loadTickets();
+  }catch(e){
+    showModalErr('Erro ao salvar: '+e.message+'. Tente fazer logout e login novamente.');
+    saveBtn.textContent=origLabel;
+    saveBtn.parentElement.disabled=false;
+  }
 }
+function showModalErr(msg){
+  let el=document.getElementById('modal-err');
+  if(!el){
+    el=document.createElement('div');
+    el.id='modal-err';
+    el.style.cssText='background:#fee2e2;color:#991b1b;border-radius:6px;padding:8px 12px;font-size:12px;margin-bottom:10px';
+    const h=document.getElementById('hw');
+    h.parentElement.insertBefore(el,document.querySelector('.ma'));
+  }
+  el.textContent=msg;el.style.display='block';
+}
+function clearModalErr(){const el=document.getElementById('modal-err');if(el)el.style.display='none';}
 async function exportCSV(){const r=await fetch('/api/v1/tickets/export?format=csv',{headers:H()});const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='helpdesk_chamados.csv';a.click();URL.revokeObjectURL(url);}
 async function exportJSON(){const r=await fetch('/api/v1/tickets/export?format=json',{headers:H()});const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='helpdesk_export.json';a.click();URL.revokeObjectURL(url);}
 function copyKey(){navigator.clipboard.writeText(document.getElementById('akd').textContent).then(()=>alert('Copiado!'));}
