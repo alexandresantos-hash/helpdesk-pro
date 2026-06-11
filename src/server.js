@@ -64,37 +64,6 @@ app.patch('/api/v1/notifications/read-all', apiKeyAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Limpeza de duplicatas (uso único — remover após executar)
-app.get('/admin/cleanup-duplicates', apiKeyAuth, async (req, res) => {
-  try {
-    await pool.query(`
-      DELETE FROM ticket_history WHERE ticket_id IN (
-        SELECT id FROM tickets WHERE id NOT IN (
-          SELECT MIN(id) FROM tickets GROUP BY subject, requester_name
-        )
-      )
-    `);
-    await pool.query(`
-      DELETE FROM notifications WHERE ticket_id IN (
-        SELECT id FROM tickets WHERE id NOT IN (
-          SELECT MIN(id) FROM tickets GROUP BY subject, requester_name
-        )
-      )
-    `);
-    const del = await pool.query(`
-      DELETE FROM tickets WHERE id NOT IN (
-        SELECT MIN(id) FROM tickets GROUP BY subject, requester_name
-      )
-    `);
-    const remaining = await pool.query('SELECT id, subject, status FROM tickets ORDER BY id');
-    res.json({
-      ok: true,
-      removidos: del.rowCount,
-      restantes: remaining.rows
-    });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
